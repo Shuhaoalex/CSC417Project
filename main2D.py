@@ -22,32 +22,7 @@ def speed_filter(M, axis, num_axis):
     result[target_slices] = 0
     return result
 
-# TODO: generalize B
-def construct_assem_B(dx, dy, size):
-    #construct the assemble B martix with grid row and grid col and dx dy
-    del_x = 1/dx
-    del_y = 1/dy
-    amount = (size + 1)*size
-    rows = []
-    cols = []
-    datas = []
-    for i in range(size*size):
-        rows.append(i)
-        cols.append(i)
-        datas.append(-del_x)
-        rows.append(i)
-        cols.append(i + size)
-        datas.append(del_x)
-        rows.append(i)
-        cols.append(i + amount + i // size)
-        datas.append(-del_y)
-        rows.append(i)
-        cols.append(i + amount + i // size + 1)
-        datas.append(del_y)
-    B = sparse.coo_matrix((datas, (rows, cols)), shape = (size*size, amount * 2)).toarray()
-    return B
-
-def get_flattened_idx(idx, sz):
+def flattened_idx(idx, sz):
     result = 0
     curr_block_sz = 1
     for i, s in zip(idx[::-1], sz[::-1]):
@@ -55,8 +30,12 @@ def get_flattened_idx(idx, sz):
         curr_block_sz *= s
     return result
 
-def retrieve_from_flattened_idx(flattened_idx, sz):
-    
+def unflattened_idx(flattened_idx, sz):
+    result = []
+    for s in sz[::-1]:
+        flattened_idx, curr = divmod(flattened_idx, s)
+        result.append(curr)
+    return result[::-1]
 
 def construct_B(dg, grid_res, num_axis):
     del_x = 1 / dg
@@ -65,104 +44,56 @@ def construct_B(dg, grid_res, num_axis):
     cols = []
     datas = []
     for i in range(grid_res**num_axis):
-        curr_idx = []
-        ii = i
-        for _ in range(num_axis):
-            ii, curr = divmod(ii, grid_res)
-            curr_idx.append(curr)
-        curr_idx = curr_idx[::-1]
+        curr_idx = unflattened_idx(i, (grid_res,) * num_axis)
         for j in range(num_axis):
             curr_grid_shape = [grid_res + 1 if k==j else grid_res for k in range(num_axis)]
             rows.append(i)
             datas.append(-del_x)
-            curr_flattend_idx = get_flattened_idx(curr_idx, curr_grid_shape)
+            curr_flattend_idx = flattened_idx(curr_idx, curr_grid_shape)
             cols.append(curr_flattend_idx + j * amount)
             curr_idx[j] += 1
             rows.append(i)
             datas.append(del_x)
-            curr_flattend_idx = get_flattened_idx(curr_idx, curr_grid_shape)
+            curr_flattend_idx = flattened_idx(curr_idx, curr_grid_shape)
             cols.append(curr_flattend_idx + j * amount)
             curr_idx[j] -= 1
     return sparse.coo_matrix((datas, (rows, cols)), shape = (grid_res**num_axis, amount * num_axis))
             
-        
-# TODO: generalize D
-def construct_assem_D(dx, dy, size):
-    #construct the assemble D matrix with grid size and dx dy
-    del_x = 1/dx
-    del_y = 1/dy
-    amount = (size+1)*size
-    rows = []
-    cols = []
-    datas = []
-    #construct u
-    for i in range(amount):
-        # if i < size:
-        #     rows.append(i)
-        #     cols.append(i)
-        #     datas.append(del_x)
-        # elif i >= amount - size:
-        #     rows.append(i)
-        #     cols.append(i-size)
-        #     datas.append(-del_x)
-        #     #become zero!
-        #else:
-        if i >= size and i < amount - size:
-            rows.append(i)
-            cols.append(i-size)
-            datas.append(-del_x)
-            rows.append(i)
-            cols.append(i)
-            datas.append(del_x)
-    #construct v
-    for i in range(size):
-        corner_x = amount+i*(size+1)
-        corner_y = size*i
-        # rows.append(corner_x)
-        # cols.append(corner_y)
-        # datas.append(del_y)
-        #become 0?
-        for j in range (size - 1):
-            rows.append(corner_x + 1 + j)
-            cols.append(corner_y + j)
-            datas.append(-del_y)
-            rows.append(corner_x + 1 + j)
-            cols.append(corner_y + j + 1)
-            datas.append(del_y)
-        # rows.append(corner_x + size)
-        # cols.append(corner_y + size -1)
-        # datas.append(-del_y)
-        # become zero
-                     
-    D = sparse.coo_matrix((datas, (rows, cols)), shape = (amount *2, size*size)).toarray()
-    return D
 
 def construct_D(dg, grid_res, num_axis):
     del_x = 1 / dg
     amount = (grid_res + 1) * (grid_res ** (num_axis - 1))
+    grid_shape = (grid_res,) * num_axis
     rows = []
     cols = []
     datas = []
     for ax in range(num_axis):
+        curr_grid_shape = [grid_res + 1 if a==ax else grid_res for a in range(num_axis)]
+        start_idx = ax * amount
         for i in range(amount):
-            curr_idx = []
-            ii = i
-            for _ in range(num_axis):
-                ii, curr = divmod(ii, grid_res)
-                curr_idx.append(curr)
-            curr_idx = curr_idx[::-1]
+            curr_idx = unflattened_idx(i, curr_grid_shape)
+            if curr_idx[ax] == 0:
+                continue
+            rows.append(start_idx + i)
+            cols.append(flattened_idx(curr_idx, grid_shape))
+            datas.append(del_x)
+            curr_idx[ax] -= 1
+            rows.append(start_idx + i)
+            cols.append(flattened_idx(curr_idx, grid_shape))
+            datas.append(-del_x)
+    return sparse.coo_matrix((datas, (rows, cols)), shape = (amount * num_axis, grid_res**num_axis))
 
 def conj_grad(A, x, b):
     r = b - np.dot(A, x)
     p = r
-    double_r = np.dot(np.transpose(r), r)
+    double_r = (r**2).sum()
     
-    for i in range(len(b)):
+    for _ in range(len(b)):
         Ap = np.dot(A, p)
         alpha = double_r / np.dot(np.transpose(p), Ap)
         x += np.dot(alpha, p)
         r -= np.dot(alpha, Ap)
-        rsnew = np.dot(np.transpose(r), r)
+        rsnew = (r**2).sum()
         if np.sqrt(rsnew) < 1e-10:
             break
         beta  = rsnew / double_r
@@ -199,7 +130,7 @@ def project_to_staggered_grid_ax(relative_coord, qdot, axis, num_axis, grid_res)
     shape += 1
     result_holder = np.zeros(shape) # used for storing flattened results
     # fill projected values into the block result holder
-    for loc, w, u in zip(grid_loc, grid_weights, q_dot[:, axis]):
+    for loc, w, u in zip(grid_loc, grid_weights, qdot[:, axis]):
         loc = tuple(loc)
         curr_blocks[loc] += w * u
         curr_counter[loc] += 1
@@ -272,6 +203,80 @@ def unproject_from_staggered_grid(q, us, num_axis, pix_size):
 
 # q = np.random.rand((num_particles, 2))
 # q_dot = np.zeros((num_particles, 2))
+
+# def construct_assem_B(dx, dy, size):
+#     #construct the assemble B martix with grid row and grid col and dx dy
+#     del_x = 1/dx
+#     del_y = 1/dy
+#     amount = (size + 1)*size
+#     rows = []
+#     cols = []
+#     datas = []
+#     for i in range(size*size):
+#         rows.append(i)
+#         cols.append(i)
+#         datas.append(-del_x)
+#         rows.append(i)
+#         cols.append(i + size)
+#         datas.append(del_x)
+#         rows.append(i)
+#         cols.append(i + amount + i // size)
+#         datas.append(-del_y)
+#         rows.append(i)
+#         cols.append(i + amount + i // size + 1)
+#         datas.append(del_y)
+#     B = sparse.coo_matrix((datas, (rows, cols)), shape = (size*size, amount * 2)).toarray()
+#     return B
+
+# def construct_assem_D(dx, dy, size):
+#     #construct the assemble D matrix with grid size and dx dy
+#     del_x = 1/dx
+#     del_y = 1/dy
+#     amount = (size+1)*size
+#     rows = []
+#     cols = []
+#     datas = []
+#     #construct u
+#     for i in range(amount):
+#         # if i < size:
+#         #     rows.append(i)
+#         #     cols.append(i)
+#         #     datas.append(del_x)
+#         # elif i >= amount - size:
+#         #     rows.append(i)
+#         #     cols.append(i-size)
+#         #     datas.append(-del_x)
+#         #     #become zero!
+#         #else:
+#         if i >= size and i < amount - size:
+#             rows.append(i)
+#             cols.append(i-size)
+#             datas.append(-del_x)
+#             rows.append(i)
+#             cols.append(i)
+#             datas.append(del_x)
+#     #construct v
+#     for i in range(size):
+#         corner_x = amount+i*(size+1)
+#         corner_y = size*i
+#         # rows.append(corner_x)
+#         # cols.append(corner_y)
+#         # datas.append(del_y)
+#         #become 0?
+#         for j in range (size - 1):
+#             rows.append(corner_x + 1 + j)
+#             cols.append(corner_y + j)
+#             datas.append(-del_y)
+#             rows.append(corner_x + 1 + j)
+#             cols.append(corner_y + j + 1)
+#             datas.append(del_y)
+#         # rows.append(corner_x + size)
+#         # cols.append(corner_y + size -1)
+#         # datas.append(-del_y)
+#         # become zero
+                     
+#     D = sparse.coo_matrix((datas, (rows, cols)), shape = (amount *2, size*size)).toarray()
+#     return D
 
 # def project_qdot_to_grid(q, q_dot):
 #     num_axis = 2
