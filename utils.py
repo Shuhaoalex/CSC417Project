@@ -4,11 +4,9 @@ import scipy.sparse as sparse
 def flatten(us):
     return np.concatenate(tuple(u.flatten() for u in us))
 
-def speed_filter(M, axis, num_axis):
-    result = M.copy()
+def filter_speed(M, axis, num_axis):
     target_slices = tuple(slice(None) if i!=axis else [0,-1] for i in range(num_axis))
-    result[target_slices] = 0
-    return result
+    M[target_slices] = 0
 
 def flattened_idx(idx, sz):
     result = 0
@@ -60,7 +58,7 @@ def construct_D(dg, grid_res, num_axis):
         start_idx = ax * amount
         for i in range(amount):
             curr_idx = unflattened_idx(i, curr_grid_shape)
-            if curr_idx[ax] == 0:
+            if curr_idx[ax] == 0 or curr_idx[ax] == grid_res:
                 continue
             rows.append(start_idx + i)
             cols.append(flattened_idx(curr_idx, grid_shape))
@@ -72,19 +70,18 @@ def construct_D(dg, grid_res, num_axis):
     return sparse.coo_matrix((datas, (rows, cols)), shape = (amount * num_axis, grid_res**num_axis))
 
 def conj_grad(A, x, b):
-    r = b - np.dot(A, x)
-    p = r
-    double_r = (r**2).sum()
-    
+    r = b - A @ x
+    p = r.copy()
+    double_r = r @ r
     for _ in range(len(b)):
-        Ap = np.dot(A, p)
-        alpha = double_r / np.dot(np.transpose(p), Ap)
-        x += np.dot(alpha, p)
-        r -= np.dot(alpha, Ap)
-        rsnew = (r**2).sum()
+        Ap = A @ p
+        alpha = double_r / (p @ Ap)
+        x += alpha * p
+        r -= alpha * Ap
+        rsnew = r @ r
         if np.sqrt(rsnew) < 1e-10:
             break
-        beta  = rsnew / double_r
+        beta = rsnew / double_r
         p = r + beta*p
         double_r = rsnew
     return x
@@ -95,7 +92,7 @@ def avection(q, q_dot, d_t):
 def external_force(q_dot, g, d_t):
     q_dot += g * d_t
 
-def linear_interp_weight(grid_coord):
+def linear_interp_weight(grid_coord): # TODO: generalize this function
     u = grid_coord[:,0][:,None]
     v = grid_coord[:,1][:,None]
 
@@ -106,21 +103,29 @@ def linear_interp_weight(grid_coord):
     return w
 
 def project_to_staggered_grid_ax(relative_coord, qdot, axis, num_axis, grid_res):
-    relative_coord = relative_coord + 0.5 # set origin to grid location (-0.5, -0.5)
-    relative_coord[:, axis] -= 0.5 # set the origin of aligned axis back to 0
-    grid_coord = np.fmod(relative_coord, 1) # get the relative coordinate of points inside cells
-    grid_loc = np.int32(relative_coord) # get the index of the cell
-    grid_weights = linear_interp_weight(grid_coord)
     shape = np.array((grid_res + 1,) * num_axis)
     shape[axis] -= 1 # set up the temporary result holder for each block in the grid
     curr_blocks = np.zeros(tuple(shape) + (2,) * num_axis)
     curr_counter = np.zeros(shape)
     shape += 1
     result_holder = np.zeros(shape) # used for storing flattened results
+    relative_coord = relative_coord + 0.5 # set origin to grid location (-0.5, -0.5)
+    relative_coord[:, axis] -= 0.5 # set the origin of aligned axis back to 0
+    # grid_coord = np.fmod(relative_coord + 1, 1) # get the relative coordinate of points inside cells
+    grid_loc = np.int32(np.floor(relative_coord)) # get the index of the cell
+    for i in range(num_axis):
+        np.clip(grid_loc[:,i], 0, curr_blocks.shape[i] - 1, grid_loc[:,i])
+    grid_coord = relative_coord - grid_loc
+    grid_weights = linear_interp_weight(grid_coord)
     # fill projected values into the block result holder
     for loc, w, u in zip(grid_loc, grid_weights, qdot[:, axis]):
         loc = tuple(loc)
+        # try:
         curr_blocks[loc] += w * u
+        # except:
+        #     print(loc)
+        #     print(curr_blocks.shape)
+        #     print(axis)
         curr_counter[loc] += 1
     # fill the results in the block holder into the grid
     for idx in zip(*np.where(curr_counter > 0)):
@@ -142,7 +147,7 @@ def get_speed_updater(D, p, dt, density, num_axis, grid_res, pix_size):
     Should return a list of staggered grid point values
     """
     # D = construct_assem_D(pix_size, pix_size, grid_res)
-    dp = np.matmul(D, p)
+    dp = D @ p
     ax_dp = dp.reshape(num_axis,-1)
     result = []
     for ax, adp in enumerate(ax_dp):
@@ -171,9 +176,18 @@ def unproject_from_staggered_grid_ax(relative_coord, u, axis, num_axis):
             else:
                 grid_slice.append(slice(curr_loc[j], curr_loc[j] + 2))
                 weight_slice.append(slice(None))
-        weight = grid_weights[i][weight_slice]
-        value = u[grid_slice]
-        result[i] = (weight * value).sum()
+        weight = grid_weights[i][tuple(weight_slice)]
+        value = u[tuple(grid_slice)]
+        try:
+            result[i] = (weight * value).sum()
+        except Exception:
+            print(weight_slice)
+            print(grid_slice)
+            print(grid_weights[i].shape)
+            print(u.shape)
+            print(grid_weights[i][weight_slice].shape)
+            print(u[grid_slice].shape)
+            assert(False)
     return result        
 
 def unproject_from_staggered_grid(q, us, num_axis, pix_size):
