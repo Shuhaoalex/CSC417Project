@@ -112,6 +112,28 @@ void update_vs(std::vector<Particle> &pl) {
 //     }
 // }
 
+void adjustSprings(std::vector<Particle> &pl, std::map<std::pair<size_t, size_t>, double> &springs) {
+    for (size_t i = 0; i < pl.size(); ++i) {
+        auto& par = pl[i];
+        for (auto& np: par.neighbors) {
+            Eigen::Vector3d r = np->x - par.x;
+            double 
+            double q = r.norm() / h;
+            if (q < 1) {
+                std::pair<size_t, size_t> key(i, np->id);
+                double d = gamma * springs[key];
+                if (r.norm() > springs[key] + d) {
+                    springs[key] += dt * alpha * (r.norm() - );
+                }
+            }
+        }
+    }
+}
+
+
+void sprint_displacements(std::vector<Particle> &pl, std::map<std::pair<size_t, size_t>, double> &springs);
+
+
 void simulation_step(std::vector<Particle> &pl, Grid3D & grid) {
     retrieve_neiboroughs(pl, grid);
     apply_gravity(pl);
