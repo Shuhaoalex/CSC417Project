@@ -11,6 +11,7 @@
 class Grid3D {
     private:
     std::vector<LinkedListNode<Particle *> *> grid_list;
+    std::vector<LinkedListNode<Particle *>> particle_list;
     int sz;
     double dg;
 
@@ -19,12 +20,18 @@ class Grid3D {
     }
 
     public:
-    std::vector<LinkedListNode<Particle *>> particle_list;
     inline Grid3D(int size, double query_radius):sz(size), dg(query_radius){
         grid_list.resize(pow(sz, 3));
         for (int i = 0; i < grid_list.size(); ++i) {
             grid_list[i] = NULL;
         }
+    }
+
+    inline void clear() {
+        for (int i = 0; i < grid_list.size(); ++i) {
+            grid_list[i] = NULL;
+        }
+        particle_list.clear();   
     }
 
     inline void update_particles_pos() {

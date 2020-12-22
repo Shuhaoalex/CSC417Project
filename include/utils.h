@@ -7,13 +7,13 @@
 #include <utility>
 #include <map>
 
-void retrieve_neiboroughs(std::vector<Particle> &pl, Grid3D & grid);
-void adjustSprings(std::vector<Particle> &pl, std::map<std::pair<size_t, size_t>, Spring> &springs);
-void sprint_displacements(std::vector<Particle> &pl, std::map<std::pair<size_t, size_t>, Spring> &springs);
-void double_density_relaxation(std::vector<Particle> &pl);
-void viscosity_impulses(std::vector<Particle> &pl);
-void apply_gravity(std::vector<Particle> &pl);
-void avection(std::vector<Particle> &pl);
-void update_vs(std::vector<Particle> &pl);
-void simulation_step(std::vector<Particle> &pl, Grid3D & grid);
+// void retrieve_neiboroughs(std::vector<Particle> &pl, Grid3D & grid);
+// void adjustSprings(std::vector<Particle> &pl, std::map<std::pair<size_t, size_t>, Spring> &springs);
+// void spring_displacements(std::vector<Particle> &pl, std::map<std::pair<size_t, size_t>, Spring> &springs);
+// void double_density_relaxation(std::vector<Particle> &pl);
+// void viscosity_impulses(std::vector<Particle> &pl);
+// void apply_gravity(std::vector<Particle> &pl);
+// void avection(std::vector<Particle> &pl);
+// void update_vs(std::vector<Particle> &pl);
+void simulation_step(std::vector<Particle> &pl, Grid3D & grid, std::map<std::pair<size_t, size_t>, Spring> &springs, constants &c);
 #endif

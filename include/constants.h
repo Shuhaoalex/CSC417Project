@@ -1,26 +1,34 @@
 #ifndef __CONSTANTS_H__
 #define __CONSTANTS_H__
 #include <Eigen/Core>
-#include <cmath>
+
 const double h = 0.1;
 const int grid_size = 10;
 const double box_size = h * grid_size;
-const Eigen::Vector3d g = Eigen::Vector3d(0,-0.005,0);
-const int num_particles = 10000;
-const double k = 0.000005;
-const double dt = 1;
-const double k_near = k * 100;
-const double rho0 = 3.0;
+struct constants {
+    
+    Eigen::Vector3d g = Eigen::Vector3d(0,-0.005,0);
+    int num_particles = 10000;
 
-// viscosity parameter
-const double sigma = 0.1;
-const double beta = 1;
+    double dt = 1;
+
+    // double density paramter
+    double k = 0.00001;
+    double k_near = 0.005;
+    double rho0 = 10;
+
+    // viscosity parameter
+    double sigma = 0.1;
+    double beta = 1;
 
 
-const double collision_e = 1.0;
+    double collision_e = 0.3;
 
-// plasticity parameter
-const double alpha = 1.0;
-const double gamma = 0.1;
+    // plasticity parameter
+    double alpha = 0.3;
+    double gamma = 0.1;
+    double k_spring = 0.3;
+};
+// const double L = h;
 
 #endif
